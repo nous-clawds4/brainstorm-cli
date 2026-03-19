@@ -25,7 +25,7 @@ export class BrainstormClient {
 
     const headers = { 'Content-Type': 'application/json' };
     if (auth && this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+      headers['access_token'] = this.token;
     }
 
     const opts = { method, headers };
