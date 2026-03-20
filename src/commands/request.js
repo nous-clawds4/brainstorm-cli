@@ -107,7 +107,7 @@ export function registerRequestCommand(program) {
           }
         }
 
-        output(data, opts);
+        output(data);
       } catch (err) {
         outputError('Failed to get request result', err.message);
       }
