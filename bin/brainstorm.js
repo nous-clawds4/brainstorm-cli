@@ -14,6 +14,7 @@ import { registerPubkeyCommand } from '../src/commands/pubkey.js';
 import { registerRequestCommand } from '../src/commands/request.js';
 import { registerUserCommand } from '../src/commands/user.js';
 import { registerConfigCommand } from '../src/commands/config.js';
+import { registerSetupCommand } from '../src/commands/setup.js';
 import { registerTestCommand } from '../src/commands/test.js';
 
 const program = new Command();
@@ -33,6 +34,7 @@ registerAuthCommand(program);
 registerPubkeyCommand(program);
 registerRequestCommand(program);
 registerUserCommand(program);
+registerSetupCommand(program);
 registerConfigCommand(program);
 registerTestCommand(program);
 
