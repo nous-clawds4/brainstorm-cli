@@ -95,7 +95,7 @@ export function registerUserCommand(program) {
         } else {
           const result = await client.get('/user/graperankResult', { auth: true });
           if (!result.data) {
-            output({ status: 'no_results', data: null }, opts);
+            output({ status: 'no_results', data: null });
           } else {
             output({
               id: result.data.private_id,

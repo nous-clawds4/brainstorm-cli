@@ -7,6 +7,7 @@
  */
 
 import { Command } from 'commander';
+import { configure } from '../src/output.js';
 import { registerHealthCommand } from '../src/commands/health.js';
 import { registerAuthCommand } from '../src/commands/auth.js';
 import { registerPubkeyCommand } from '../src/commands/pubkey.js';
@@ -21,7 +22,10 @@ program
   .name('brainstorm')
   .description('CLI for LLM agents to interact with the Brainstorm backend')
   .version('0.1.0')
-  .option('--pretty', 'Pretty-print JSON output');
+  .option('--pretty', 'Pretty-print JSON output')
+  .hook('preAction', () => {
+    configure(program.opts());
+  });
 
 // Register all command groups
 registerHealthCommand(program);

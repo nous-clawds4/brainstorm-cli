@@ -20,7 +20,7 @@ export function registerConfigCommand(program) {
       if (display.token) {
         display.token = display.token.slice(0, 20) + '...';
       }
-      output(display, opts);
+      output(display);
     });
 
   config
@@ -46,7 +46,7 @@ export function registerConfigCommand(program) {
 
       cfg[configKey] = value;
       saveConfig(cfg);
-      output({ status: 'updated', key: configKey, value: configKey === 'token' ? '***' : value }, opts);
+      output({ status: 'updated', key: configKey, value: configKey === 'token' ? '***' : value });
     });
 
   config
@@ -57,6 +57,6 @@ export function registerConfigCommand(program) {
         serverUrl: 'http://localhost:8000',
         token: null,
       });
-      output({ status: 'reset' }, opts);
+      output({ status: 'reset' });
     });
 }

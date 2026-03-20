@@ -21,7 +21,7 @@ export function registerHealthCommand(program) {
           server: client.serverUrl,
           response: result,
           latencyMs: elapsed,
-        }, opts.parent?.opts?.() || {});
+        });
       } catch (err) {
         outputError('Server unreachable', err.message);
       }

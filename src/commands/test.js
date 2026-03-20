@@ -144,7 +144,7 @@ export function registerTestCommand(program) {
     .action(async (opts) => {
       const runner = createRunner();
       await runSmokeTests(runner);
-      output(runner.summary(), opts);
+      output(runner.summary());
       if (runner.summary().failed > 0) process.exit(1);
     });
 
@@ -154,7 +154,7 @@ export function registerTestCommand(program) {
     .action(async (opts) => {
       const runner = createRunner();
       await runAuthTests(runner);
-      output(runner.summary(), opts);
+      output(runner.summary());
       if (runner.summary().failed > 0) process.exit(1);
     });
 
@@ -164,7 +164,7 @@ export function registerTestCommand(program) {
     .action(async (opts) => {
       const runner = createRunner();
       await runObserverTests(runner);
-      output(runner.summary(), opts);
+      output(runner.summary());
       if (runner.summary().failed > 0) process.exit(1);
     });
 
@@ -174,7 +174,7 @@ export function registerTestCommand(program) {
     .action(async (opts) => {
       const runner = createRunner();
       await runGrapeRankTests(runner);
-      output(runner.summary(), opts);
+      output(runner.summary());
       if (runner.summary().failed > 0) process.exit(1);
     });
 
@@ -187,7 +187,7 @@ export function registerTestCommand(program) {
       await runAuthTests(runner);
       await runObserverTests(runner);
       await runGrapeRankTests(runner);
-      output(runner.summary(), opts);
+      output(runner.summary());
       if (runner.summary().failed > 0) process.exit(1);
     });
 }
