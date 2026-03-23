@@ -212,6 +212,8 @@ async function runSetupTests(runner) {
   });
 }
 
+import { registerPropagationTestCommand } from './test-propagation.js';
+
 // ── Test Command Registration ──
 
 export function registerTestCommand(program) {
@@ -271,7 +273,7 @@ export function registerTestCommand(program) {
 
   test
     .command('all')
-    .description('Run all test suites')
+    .description('Run all test suites (excludes propagation)')
     .action(async () => {
       const runner = createRunner();
       await runSmokeTests(runner);
@@ -282,4 +284,8 @@ export function registerTestCommand(program) {
       output(runner.summary());
       if (runner.summary().failed > 0) process.exit(1);
     });
+
+  // Propagation test — separate because it's slow, has side effects,
+  // and requires nak + a nostr secret key.
+  registerPropagationTestCommand(test);
 }
