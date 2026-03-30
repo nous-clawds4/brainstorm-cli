@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-03-27_00-14-30",
+  "timestamp_utc": "2026-03-27T00:15:14Z",
+  "nous_pubkey": "15f7dafc4624b1e6b00ab7f863de1a53b71967528070ec7d1837c7a40c1c7270",
+  "new_follow_pubkey": "fd38f135ef675eac5e93d5b2a738c41777c250188031caf1dcf07b1687a1fe49",
+  "total_follows_after_publish": 19,
+  "initial_wait_seconds": 20,
+  "retry_interval_seconds": 300,
+  "max_elapsed_seconds": 3600,
+  "total_elapsed_seconds": 34,
+  "total_rounds": 1,
+  "baseline": {
+    "gateway_relay": 18,
+    "prod_relay": 18,
+    "staging_relay": 18,
+    "prod_api": 18,
+    "staging_api": 18
+  },
+  "auth": {
+    "prod_api": true,
+    "staging_api": true
+  },
+  "rounds": [{"round":1,"elapsed_seconds":20,"counts":{"gateway_relay":19,"prod_relay":19,"staging_relay":19,"prod_api":19,"staging_api":19},"verdicts":{"gateway_relay":"PASS","prod_relay":"PASS","staging_relay":"PASS","prod_api":"PASS","staging_api":"PASS"}}],
+  "final_verdicts": {
+    "gateway_relay": "PASS",
+    "prod_relay": "PASS",
+    "staging_relay": "PASS",
+    "prod_api": "PASS",
+    "staging_api": "PASS"
+  }
+}

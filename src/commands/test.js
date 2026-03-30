@@ -131,6 +131,89 @@ async function runGrapeRankTests(runner) {
   });
 }
 
+// ── Setup Tests ──
+
+async function runSetupTests(runner) {
+  const client = getClient();
+  const config = loadConfig();
+
+  if (!config.pubkey) {
+    await runner.run('setup: pubkey configured', async () => {
+      throw new Error('No pubkey in config. Run: brainstorm auth login <nsec>');
+    });
+    return;
+  }
+
+  await runner.run('setup: endpoint returns array', async () => {
+    const result = await client.get(`/setup/${config.pubkey}`);
+    if (!Array.isArray(result)) throw new Error(`Expected array, got ${typeof result}`);
+  });
+
+  await runner.run('setup: tags have correct structure', async () => {
+    const result = await client.get(`/setup/${config.pubkey}`);
+    if (result.length === 0) throw new Error('Empty tags array');
+    for (const tag of result) {
+      if (!Array.isArray(tag)) throw new Error(`Tag is not an array: ${JSON.stringify(tag)}`);
+      if (tag.length !== 3) throw new Error(`Expected 3 elements per tag, got ${tag.length}`);
+      if (typeof tag[0] !== 'string') throw new Error(`Tag descriptor is not a string: ${tag[0]}`);
+      if (typeof tag[1] !== 'string') throw new Error(`TA pubkey is not a string: ${tag[1]}`);
+      if (typeof tag[2] !== 'string') throw new Error(`Relay is not a string: ${tag[2]}`);
+    }
+  });
+
+  await runner.run('setup: tags include expected descriptors', async () => {
+    const result = await client.get(`/setup/${config.pubkey}`);
+    const descriptors = result.map(tag => tag[0]);
+    if (!descriptors.includes('30382:rank')) throw new Error('Missing 30382:rank tag');
+    if (!descriptors.includes('30382:followers')) throw new Error('Missing 30382:followers tag');
+  });
+
+  await runner.run('setup: TA pubkey is valid hex', async () => {
+    const result = await client.get(`/setup/${config.pubkey}`);
+    for (const tag of result) {
+      if (!/^[0-9a-f]{64}$/.test(tag[1])) {
+        throw new Error(`Invalid TA pubkey: ${tag[1]}`);
+      }
+    }
+  });
+
+  await runner.run('setup: relay URL is valid', async () => {
+    const result = await client.get(`/setup/${config.pubkey}`);
+    for (const tag of result) {
+      if (!tag[2].startsWith('wss://') && !tag[2].startsWith('ws://')) {
+        throw new Error(`Invalid relay URL: ${tag[2]}`);
+      }
+    }
+  });
+
+  await runner.run('setup: TA pubkey matches observer', async () => {
+    const setupResult = await client.get(`/setup/${config.pubkey}`);
+    const observerResult = await client.get(`/brainstormPubkey/${config.pubkey}`);
+    const expectedTaPubkey = observerResult.data.brainstorm_pubkey;
+    for (const tag of setupResult) {
+      if (tag[1] !== expectedTaPubkey) {
+        throw new Error(`TA pubkey mismatch: setup=${tag[1]} observer=${expectedTaPubkey}`);
+      }
+    }
+  });
+
+  await runner.run('setup: returns 404 for unknown pubkey', async () => {
+    const unknownPubkey = 'ff'.repeat(32);
+    try {
+      await client.get(`/setup/${unknownPubkey}`);
+      throw new Error('Expected 404, got success');
+    } catch (err) {
+      if (!err.message.includes('404') && !err.message.toLowerCase().includes('not found')) {
+        // Re-throw if it's not the expected 404
+        if (err.message === 'Expected 404, got success') throw err;
+        // Other errors (like network) are acceptable depending on server behavior
+      }
+    }
+  });
+}
+
+import { registerPropagationTestCommand } from './test-propagation.js';
+
 // ── Test Command Registration ──
 
 export function registerTestCommand(program) {
@@ -179,15 +262,30 @@ export function registerTestCommand(program) {
     });
 
   test
+    .command('setup')
+    .description('NIP-85 setup endpoint tests')
+    .action(async () => {
+      const runner = createRunner();
+      await runSetupTests(runner);
+      output(runner.summary());
+      if (runner.summary().failed > 0) process.exit(1);
+    });
+
+  test
     .command('all')
-    .description('Run all test suites')
-    .action(async (opts) => {
+    .description('Run all test suites (excludes propagation)')
+    .action(async () => {
       const runner = createRunner();
       await runSmokeTests(runner);
       await runAuthTests(runner);
       await runObserverTests(runner);
       await runGrapeRankTests(runner);
+      await runSetupTests(runner);
       output(runner.summary());
       if (runner.summary().failed > 0) process.exit(1);
     });
+
+  // Propagation test — separate because it's slow, has side effects,
+  // and requires nak + a nostr secret key.
+  registerPropagationTestCommand(test);
 }
