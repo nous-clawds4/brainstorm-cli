@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-03-26_22-33-25",
+  "timestamp_utc": "2026-03-26T22:34:16Z",
+  "nous_pubkey": "15f7dafc4624b1e6b00ab7f863de1a53b71967528070ec7d1837c7a40c1c7270",
+  "new_follow_pubkey": "1e9af1e1076be6f379d4dd5d1c18ba9351d1c525fd4e204db2e03d7be10a3a89",
+  "propagation_wait_seconds": 20,
+  "before": {
+    "gateway_relay": 15,
+    "prod_relay": 15,
+    "staging_relay": 15,
+    "prod_api": 15,
+    "staging_api": 13
+  },
+  "after_relay_check": {
+    "gateway_relay": 16,
+    "prod_relay": 16,
+    "staging_relay": 16
+  },
+  "after_api_check": {
+    "prod_api": 16,
+    "staging_api": 13
+  },
+  "verdicts": {
+    "gateway_relay": "PASS",
+    "prod_relay": "PASS",
+    "staging_relay": "PASS",
+    "prod_api": "PASS",
+    "staging_api": "FAIL"
+  }
+}
