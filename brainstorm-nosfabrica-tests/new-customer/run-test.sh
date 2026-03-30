@@ -153,46 +153,75 @@ echo "⏳ Waiting 10s for relay propagation..."
 sleep 10
 
 # ═══════════════════════════════════════════════════════════════════════════
-# STEP 2: Register with Brainstorm staging
+# STEP 2: Wait for propagation + fetch NIP-85 setup data
 # ═══════════════════════════════════════════════════════════════════════════
 echo ""
-echo "🏗️  Step 2: Registering with Brainstorm staging..."
-
-# Call /brainstormPubkey — creates observer + auto-triggers GrapeRank
-OBSERVER_RESPONSE=$(curl -sf "$STAGING_API/brainstormPubkey/$HEX_PUBKEY" 2>/dev/null)
-BRAINSTORM_PUBKEY=$(echo "$OBSERVER_RESPONSE" | jq -r '.data.brainstorm_pubkey // empty')
-
-if [ -z "$BRAINSTORM_PUBKEY" ]; then
-  echo "   ❌ Failed to create observer. Response:"
-  echo "   $OBSERVER_RESPONSE"
-  exit 1
-fi
-
-echo "   Observer (Brainstorm pubkey): $BRAINSTORM_PUBKEY"
-echo "   ✅ Observer created, GrapeRank auto-triggered"
+echo "🏗️  Step 2: Waiting for kind:3 to propagate through the pipeline..."
+echo "   The /setup endpoint will return 404 until the server ingests our follow list."
+echo "   Polling every 30s (up to 10 minutes)..."
+echo ""
 
 SIGNUP_TIME=$(date +%s)
 SIGNUP_TIME_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# ═══════════════════════════════════════════════════════════════════════════
-# STEP 3: Fetch NIP-85 setup data and publish kind 10040
-# ═══════════════════════════════════════════════════════════════════════════
-echo ""
-echo "📋 Step 3: Fetching NIP-85 setup data..."
+SETUP_RESPONSE=""
+SETUP_WAIT_MAX=600  # 10 minutes max wait for propagation
+SETUP_POLL_INTERVAL=30
+SETUP_ELAPSED=0
 
-SETUP_RESPONSE=$(curl -sf "$STAGING_API/setup/$HEX_PUBKEY" 2>/dev/null)
+while [ "$SETUP_ELAPSED" -lt "$SETUP_WAIT_MAX" ]; do
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_API/setup/$HEX_PUBKEY" 2>/dev/null)
 
-# Parse the setup tags
-# Expected format: [["30382:rank", "<ta_pubkey>", "<relay>"], ["30382:followers", "<ta_pubkey>", "<relay>"]]
-NUM_TAGS=$(echo "$SETUP_RESPONSE" | jq 'length')
+  if [ "$HTTP_CODE" = "200" ]; then
+    SETUP_RESPONSE=$(curl -sf "$STAGING_API/setup/$HEX_PUBKEY" 2>/dev/null)
+    NUM_TAGS=$(echo "$SETUP_RESPONSE" | jq 'if type == "array" then length else 0 end' 2>/dev/null)
+    if [ "${NUM_TAGS:-0}" -gt 0 ]; then
+      echo "   ✅ /setup returned $NUM_TAGS tags after ${SETUP_ELAPSED}s"
+      break
+    fi
+  fi
 
-if [ "$NUM_TAGS" -eq 0 ] || [ "$NUM_TAGS" = "null" ]; then
-  echo "   ❌ No setup tags returned. Response:"
-  echo "   $SETUP_RESPONSE"
+  echo "   T+${SETUP_ELAPSED}s: /setup returned HTTP $HTTP_CODE (not ready yet)"
+  sleep "$SETUP_POLL_INTERVAL"
+  SETUP_ELAPSED=$(($(date +%s) - SIGNUP_TIME))
+done
+
+if [ -z "$SETUP_RESPONSE" ] || [ "${NUM_TAGS:-0}" -eq 0 ]; then
+  echo "   ❌ /setup did not return valid tags within ${SETUP_WAIT_MAX}s"
+  echo "   The kind:3 may not have propagated to staging yet."
+
+  # Save a failure result
+  cat > "$RESULT_FILE" <<FAILEOF
+{
+  "timestamp": "$TIMESTAMP",
+  "timestamp_utc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "run_number": $RUN_NUMBER,
+  "customer": {
+    "hex_pubkey": "$HEX_PUBKEY",
+    "npub": "$NPUB",
+    "nsec_env_var": "$KEY_VAR",
+    "follows": $(printf '%s\n' "${FOLLOWS[@]}" | jq -R . | jq -s .),
+    "follow_count": ${#FOLLOWS[@]}
+  },
+  "verdicts": {
+    "setup_propagation": "FAIL",
+    "kind_10040_published": "FAIL",
+    "trusted_assertions_appeared": "FAIL",
+    "trusted_assertions_stabilized": "FAIL"
+  },
+  "failure_reason": "setup endpoint did not return valid tags within ${SETUP_WAIT_MAX}s"
+}
+FAILEOF
+  echo "📁 Results saved to: $RESULT_FILE"
+  echo "{\"run_number\": $RUN_NUMBER}" > "$STATE_FILE"
   exit 1
 fi
 
-echo "   Received $NUM_TAGS setup tags:"
+# ═══════════════════════════════════════════════════════════════════════════
+# STEP 3: Parse setup data and publish kind 10040
+# ═══════════════════════════════════════════════════════════════════════════
+echo ""
+echo "📋 Step 3: Parsing NIP-85 setup data..."
 
 # Extract info from first tag (all should share the same TA pubkey and relay)
 TA_PUBKEY=$(echo "$SETUP_RESPONSE" | jq -r '.[0][1]')
@@ -209,23 +238,17 @@ echo ""
 echo "   TA pubkey: $TA_PUBKEY"
 echo "   TA relay:  $TA_RELAY"
 
-# Verify TA pubkey matches the observer
-if [ "$TA_PUBKEY" != "$BRAINSTORM_PUBKEY" ]; then
-  echo "   ⚠️  Warning: TA pubkey ($TA_PUBKEY) != observer pubkey ($BRAINSTORM_PUBKEY)"
-fi
-
 # Build and publish kind 10040 event
-# Tags: one "d" tag with the TA pubkey, plus each setup tag as-is
 echo ""
 echo "📝 Publishing kind 10040 event..."
 
-# Build tag args for nak
+# Build tag args for nak (semicolon-delimited for multi-value tags)
 TAG_ARGS=()
 for i in $(seq 0 $((NUM_TAGS - 1))); do
   DESC=$(echo "$SETUP_RESPONSE" | jq -r ".[$i][0]")
   TPUB=$(echo "$SETUP_RESPONSE" | jq -r ".[$i][1]")
   TREL=$(echo "$SETUP_RESPONSE" | jq -r ".[$i][2]")
-  TAG_ARGS+=("-t" "${DESC}=${TPUB}=${TREL}")
+  TAG_ARGS+=("-t" "${DESC}=${TPUB};${TREL}")
 done
 
 EVENT_10040=$(nak event --sec "$NSEC" -k 10040 -c "" "${TAG_ARGS[@]}" "${PUBLISH_RELAYS[@]}" 2>/dev/null | tail -1)
@@ -260,12 +283,33 @@ while true; do
 
   ROUND=$((ROUND + 1))
 
-  # Count kind 30382 events from TA pubkey on the designated relay
-  TA_COUNT=$(nak count --author "$TA_PUBKEY" --kind 30382 "$TA_RELAY" 2>/dev/null || echo "0")
-  # Fallback: if nak count isn't supported, use req + jq
-  if [ -z "$TA_COUNT" ] || [ "$TA_COUNT" = "null" ]; then
-    TA_COUNT=$(nak req --author "$TA_PUBKEY" --kind 30382 "$TA_RELAY" 2>/dev/null | wc -l | tr -d ' ')
-  fi
+  # Count kind 30382 events from TA pubkey on the designated relay.
+  # Use --since to only count TAs created after our signup.
+  # The relay caps results (commonly 500 per query), so we paginate
+  # using created_at to get an accurate total count.
+  TA_COUNT=0
+  UNTIL=""
+  while true; do
+    NAK_ARGS=(--author "$TA_PUBKEY" --kind 30382 --since "$SIGNUP_TIME" -l 500)
+    [ -n "$UNTIL" ] && NAK_ARGS+=(--until "$UNTIL")
+    NAK_ARGS+=("$TA_RELAY")
+
+    BATCH=$(nak req "${NAK_ARGS[@]}" 2>/dev/null)
+    BATCH_COUNT=$(echo "$BATCH" | grep -c '^{' 2>/dev/null || echo "0")
+    [ "$BATCH_COUNT" -eq 0 ] && break
+
+    TA_COUNT=$((TA_COUNT + BATCH_COUNT))
+
+    # If fewer than 500, we've reached the end of this time range
+    [ "$BATCH_COUNT" -lt 500 ] && break
+
+    # Get the oldest created_at in this batch for pagination
+    OLDEST_TS=$(echo "$BATCH" | jq -s 'map(.created_at) | min' 2>/dev/null)
+    [ -z "$OLDEST_TS" ] || [ "$OLDEST_TS" = "null" ] && break
+
+    # Next page: events before the oldest in this batch
+    UNTIL=$((OLDEST_TS - 1))
+  done
 
   ELAPSED=$(($(date +%s) - MONITOR_START))
   ROUND_TIME_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -317,6 +361,7 @@ for i in $(seq 1 "$ROUND"); do
 done
 
 # Verdicts
+V_PROPAGATION="PASS"  # If we got here, /setup returned data
 V_10040="PASS"  # If we got here, 10040 was published
 V_TA_APPEARED="FAIL"
 V_TA_STABILIZED="FAIL"
@@ -342,10 +387,10 @@ cat > "$RESULT_FILE" <<EOF
   },
   "brainstorm": {
     "api": "$STAGING_API",
-    "observer_pubkey": "$BRAINSTORM_PUBKEY",
     "ta_pubkey": "$TA_PUBKEY",
     "ta_relay": "$TA_RELAY",
     "setup_tags": $(echo "$SETUP_RESPONSE" | jq .),
+    "setup_wait_seconds": $SETUP_ELAPSED,
     "signup_time_utc": "$SIGNUP_TIME_UTC",
     "event_10040_time_utc": "$EVENT_10040_TIME_UTC"
   },
@@ -360,6 +405,7 @@ cat > "$RESULT_FILE" <<EOF
     "stable_rounds": $STABLE_ROUNDS
   },
   "verdicts": {
+    "setup_propagation": "$V_PROPAGATION",
     "kind_10040_published": "$V_10040",
     "trusted_assertions_appeared": "$V_TA_APPEARED",
     "trusted_assertions_stabilized": "$V_TA_STABILIZED"
@@ -373,10 +419,11 @@ echo "════════════════════════�
 echo "  Results Summary"
 echo "═══════════════════════════════════════════════════════════"
 echo "  Customer: $NPUB"
-echo "  Observer: $BRAINSTORM_PUBKEY"
-echo "  TA relay: $TA_RELAY"
+echo "  TA pubkey: $TA_PUBKEY"
+echo "  TA relay:  $TA_RELAY"
 echo ""
 echo "  Verdicts:"
+echo "    Setup propagation:           $V_PROPAGATION (waited ${SETUP_ELAPSED}s)"
 echo "    Kind 10040 published:        $V_10040"
 echo "    TAs appeared:                $V_TA_APPEARED"
 if [ "$V_TA_APPEARED" = "PASS" ]; then
